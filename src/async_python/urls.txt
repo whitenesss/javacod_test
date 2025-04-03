@@ -1,0 +1,5 @@
+https://jsonplaceholder.typicode.com/todos/1
+https://jsonplaceholder.typicode.com/todos/2
+https://api.github.com/users/octocat
+https://httpbin.org/get
+https://nonexistent.url  # Этот URL не существует (ошибочный)
