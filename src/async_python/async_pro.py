@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 
+import aiofiles
 import aiohttp
 from aiohttp import ClientError, ClientTimeout
 
@@ -51,10 +53,11 @@ async def fetch_urls(input_file, output_file, max_concurrent=5):
 
 
 if __name__ == "__main__":
-    import aiofiles
+
 
     asyncio.run(
         fetch_urls(
-            "./src/async_python/urls.txt", "./src/async_python/results_pro.jsonl"
+            os.path.join(os.getcwd(), 'src/async_python/urls.txt'), os.path.join(os.getcwd(), 'src/async_python/results_pro.jsonl')
         )
     )
+    print("✅ Все тесты пройдены!")

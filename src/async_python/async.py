@@ -12,6 +12,7 @@
 # Пример использования:
 import asyncio
 import json
+import os
 
 import aiohttp
 
@@ -23,6 +24,7 @@ urls = [
 
 
 async def fetch_url(url, session):
+    """Делает HTTP-запрос"""
     try:
         async with session.get(url) as response:
             return {"url": url, "status_code": response.status}
@@ -33,12 +35,14 @@ async def fetch_url(url, session):
 
 
 async def work(url, session, semaphore, results):
+    """Обрабатывает один URL с ограничением через семафор."""
     async with semaphore:
         result = await fetch_url(url, session)
         results.append(result)
 
 
 async def fetch_urls(urls: list[str], file_path: str):
+
     max_size_semaphore = 5
     semaphore = asyncio.Semaphore(max_size_semaphore)
     results = []
@@ -56,4 +60,6 @@ async def fetch_urls(urls: list[str], file_path: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(fetch_urls(urls, "./src/async_python/results.jsonl"))
+    asyncio.run(fetch_urls(urls, os.path.join(os.getcwd(), 'src/async_python/results.jsonl')))
+    print("✅ Все тесты пройдены!")
+

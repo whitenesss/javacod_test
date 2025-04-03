@@ -83,3 +83,4 @@ if __name__ == "__main__":
     assert decorated(5, 6) == 3
     assert decorated(1, 2) == 4
     assert mocked_func.call_count == 4
+    print("✅ Все тесты пройдены!")

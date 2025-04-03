@@ -24,3 +24,4 @@ if __name__ == "__main__":
     time.sleep(1)
     assert created_at_time <= datetime.now()
     print(f"NameClass.created_at: {created_at_time}")
+    print("✅ Все тесты пройдены!")
