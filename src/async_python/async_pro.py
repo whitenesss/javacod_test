@@ -7,29 +7,42 @@ import aiohttp
 from aiohttp import ClientError, ClientTimeout
 
 
-async def fetch_url(url, session):
-    """Делает HTTP-запрос и возвращает JSON, если статус 200."""
-    try:
-        async with session.get(url, timeout=ClientTimeout(total=30)) as response:
-            if response.status == 200:
-                try:
-                    data = await response.read()
-                    json_data = json.loads(data)
-                    return {"url": url, "content": json_data}
-                except json.JSONDecodeError:
-                    print(f"Невалидный JSON: {url}")
-                    return None
-            print(f"Пропускаем {url}: статус {response.status}")
-    except ClientError as e:
-        print(f"Ошибка с {url}: {str(e)}")
+async def fetch_url(url, session, retries=3):
+    """Улучшенная версия с потоковым чтением и повторами."""
+    for attempt in range(retries):
+        try:
+            timeout = ClientTimeout(total=300)  # 5 минут для больших файлов
+            async with session.get(url, timeout=timeout) as response:
+                if response.status == 200:
+                    try:
+                        chunks = []
+                        async for chunk in response.content.iter_chunked(1024*1024):
+                            chunks.append(chunk)
+                        data = b''.join(chunks)
+                        json_data = json.loads(data)
+                        return {"url": url, "content": json_data}
+                    except json.JSONDecodeError:
+                        print(f"Невалидный JSON: {url}")
+                        return None
+                print(f"Пропускаем {url}: статус {response.status}")
+        except Exception as e:
+            if attempt == retries - 1:
+                print(f"Ошибка с {url}: {str(e)}")
+                return None
+            await asyncio.sleep(1 * (attempt + 1))
     return None
 
 
-async def worker(url, session, semaphore, out_f):  # Принимаем открытый файл
+async def worker(url, session, semaphore, out_f):
+    """Исправленная версия - принимает уже открытый файловый объект."""
     async with semaphore:
         result = await fetch_url(url, session)
         if result:
-            await out_f.write(json.dumps(result) + "\n")
+            if isinstance(result['content'], list):
+                for item in result['content']:
+                    await out_f.write(json.dumps({"url": url, "content": item}) + "\n")
+            else:
+                await out_f.write(json.dumps(result) + "\n")
 
 
 async def fetch_urls(input_file, output_file, max_concurrent=5, batch_size=1000):
