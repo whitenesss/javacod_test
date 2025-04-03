@@ -25,39 +25,49 @@ async def fetch_url(url, session):
     return None
 
 
-async def worker(url, session, semaphore, output_file):
-    """Обрабатывает один URL с ограничением через семафор."""
+async def worker(url, session, semaphore, out_f):  # Принимаем открытый файл
     async with semaphore:
         result = await fetch_url(url, session)
         if result:
-            async with aiofiles.open(output_file, "a") as f:
-                await f.write(json.dumps(result) + "\n")
+            await out_f.write(json.dumps(result) + "\n")
 
 
-async def fetch_urls(input_file, output_file, max_concurrent=5):
-    """Читает URL из файла и запускает асинхронные задачи."""
+async def fetch_urls(input_file, output_file, max_concurrent=5, batch_size=1000):
+    """Основная функция с двумя оптимизациями:
+    1. Файл открывается ОДИН раз
+    2. Пакетная обработка через batch_size"""
     semaphore = asyncio.Semaphore(max_concurrent)
     connector = aiohttp.TCPConnector(limit=0)
     timeout = ClientTimeout(total=60)
+
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-        async with aiofiles.open(input_file, "r") as f:
-            tasks = []
+        async with aiofiles.open(input_file, "r") as f, \
+                aiofiles.open(output_file, "a") as out_f:  # Открываем файл 1 раз
+
+            batch = []
             async for url in f:
                 url = url.strip()
                 if url:
                     task = asyncio.create_task(
-                        worker(url, session, semaphore, output_file)
+                        worker(url, session, semaphore, out_f)  # Передаём открытый файл
                     )
-                    tasks.append(task)
-            await asyncio.gather(*tasks)
+                    batch.append(task)
 
+                    if len(batch) >= batch_size:
+                        await asyncio.gather(*batch)
+                        batch = []
+
+            if batch:
+                await asyncio.gather(*batch)
 
 if __name__ == "__main__":
 
 
     asyncio.run(
         fetch_urls(
-            os.path.join(os.getcwd(), 'src/async_python/urls.txt'), os.path.join(os.getcwd(), 'src/async_python/results_pro.jsonl')
+            os.path.join(os.getcwd(), 'src/async_python/urls.txt'),
+            os.path.join(os.getcwd(), 'src/async_python/results_pro.jsonl')
+
         )
     )
     print("✅ Все тесты пройдены!")
