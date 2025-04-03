@@ -30,3 +30,4 @@ def search(numbers: list[int], number: int) -> bool:
 if __name__ == "__main__":
     assert search(numbers, 3) is True
     assert search(numbers, 9999999) is False
+    print("✅ Все тесты пройдены!")

@@ -51,3 +51,4 @@ if __name__ == "__main__":
     obj_1 = singleton_instance
     obj_2 = singleton_instance
     assert (obj_1 is obj_2) is True
+    print("✅ Все тесты пройдены!")

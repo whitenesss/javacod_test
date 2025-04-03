@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -82,7 +83,7 @@ def save_results(file_name, data):
 
 
 if __name__ == "__main__":
-    numbers = generate_data(10000)  # Генерируем 100 000 чисел
+    numbers = generate_data(100000)  # Генерируем 100 000 чисел
 
     methods = {
         "Sequential": sequential_processing,
@@ -98,8 +99,9 @@ if __name__ == "__main__":
         _, duration = method(numbers)
         results[name] = duration
 
-    save_results("./src/multiproc_pyton/results.json", results)
+    save_results(os.path.join(os.getcwd(), 'src/multiproc_python/results.json'), results)
 
     print("\n Время выполнения:")
     for key, value in results.items():
         print(f"{key}: {value:.2f} сек")
+    print("✅ Все тесты пройдены!")
