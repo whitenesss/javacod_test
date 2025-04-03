@@ -1,24 +1,48 @@
 import asyncio
 import json
 import os
+from urllib.parse import urlparse
 
 import aiofiles
 import aiohttp
-from aiohttp import ClientError, ClientTimeout
+from aiohttp import ClientError, ClientTimeout, TCPConnector
+
+
+class SmartTimeout:
+    """Динамический таймаут на основе ожидаемого размера файла"""
+
+    def __init__(self):
+        self.base_timeout = 30  # Базовый таймаут 30 секунд
+        self.per_mb_timeout = 2  # +2 секунды на каждый МБ
+
+    def calculate(self, content_length):
+        if not content_length:
+            return self.base_timeout
+
+        size_mb = content_length / (1024 * 1024)
+        return min(
+            self.base_timeout + int(size_mb * self.per_mb_timeout),
+            300  # Максимальный таймаут 5 минут
+        )
 
 
 async def fetch_url(url, session, retries=3):
-    """Улучшенная версия с потоковым чтением и повторами."""
+    """Упрощенная загрузка с умным таймаутом"""
     for attempt in range(retries):
         try:
-            timeout = ClientTimeout(total=300)  # 5 минут для больших файлов
-            async with session.get(url, timeout=timeout) as response:
+            # Сначала HEAD запрос для определения размера
+            async with session.head(url) as head_resp:
+                content_length = int(head_resp.headers.get('Content-Length', 0))
+                timeout = SmartTimeout().calculate(content_length)
+
+            # Основной запрос с рассчитанным таймаутом
+            async with session.get(
+                    url,
+                    timeout=ClientTimeout(total=timeout)
+            ) as response:
                 if response.status == 200:
                     try:
-                        chunks = []
-                        async for chunk in response.content.iter_chunked(1024*1024):
-                            chunks.append(chunk)
-                        data = b''.join(chunks)
+                        data = await response.read()
                         json_data = json.loads(data)
                         return {"url": url, "content": json_data}
                     except json.JSONDecodeError:
@@ -34,53 +58,55 @@ async def fetch_url(url, session, retries=3):
 
 
 async def worker(url, session, semaphore, out_f):
-    """Исправленная версия - принимает уже открытый файловый объект."""
+    """Обработчик с защитой от ошибок записи"""
     async with semaphore:
         result = await fetch_url(url, session)
         if result:
-            if isinstance(result['content'], list):
-                for item in result['content']:
-                    await out_f.write(json.dumps({"url": url, "content": item}) + "\n")
-            else:
+            try:
                 await out_f.write(json.dumps(result) + "\n")
+            except Exception as e:
+                print(f"Ошибка записи для {url}: {str(e)}")
 
 
-async def fetch_urls(input_file, output_file, max_concurrent=5, batch_size=1000):
-    """Основная функция с двумя оптимизациями:
-    1. Файл открывается ОДИН раз
-    2. Пакетная обработка через batch_size"""
+async def fetch_urls(input_file, output_file, max_concurrent=5):
+    """Упрощенная основная функция"""
+    connector = TCPConnector(
+        limit=max_concurrent * 2,
+        limit_per_host=5,
+        force_close=True
+    )
+
     semaphore = asyncio.Semaphore(max_concurrent)
-    connector = aiohttp.TCPConnector(limit=0)
-    timeout = ClientTimeout(total=60)
 
-    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+    async with aiohttp.ClientSession(connector=connector) as session:
         async with aiofiles.open(input_file, "r") as f, \
-                aiofiles.open(output_file, "a") as out_f:  # Открываем файл 1 раз
+                aiofiles.open(output_file, "a") as out_f:
 
-            batch = []
+            tasks = []
             async for url in f:
                 url = url.strip()
-                if url:
+                if url and urlparse(url).scheme in ('http', 'https'):
                     task = asyncio.create_task(
-                        worker(url, session, semaphore, out_f)  # Передаём открытый файл
+                        worker(url, session, semaphore, out_f)
                     )
-                    batch.append(task)
+                    tasks.append(task)
 
-                    if len(batch) >= batch_size:
-                        await asyncio.gather(*batch)
-                        batch = []
+                    if len(tasks) >= max_concurrent * 2:
+                        done, pending = await asyncio.wait(
+                            tasks,
+                            return_when=asyncio.FIRST_COMPLETED
+                        )
+                        tasks = list(pending)
 
-            if batch:
-                await asyncio.gather(*batch)
+            await asyncio.gather(*tasks)
+
 
 if __name__ == "__main__":
-
-
     asyncio.run(
         fetch_urls(
             os.path.join(os.getcwd(), 'src/async_python/urls.txt'),
-            os.path.join(os.getcwd(), 'src/async_python/results_pro.jsonl')
-
+            os.path.join(os.getcwd(), 'src/async_python/results_pro.jsonl'),
+            max_concurrent=5
         )
     )
     print("✅ Все тесты пройдены!")
